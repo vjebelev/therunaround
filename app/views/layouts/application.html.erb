@@ -1,0 +1,53 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:fb="http://www.facebook.com/2008/fbml">
+<head>
+ <title>The Run Around</title>
+  <%= stylesheet_link_tag 'trr', :media => 'all' %>
+  <%= javascript_include_tag :defaults %>
+  <%= javascript_include_tag 'http://static.ak.connect.facebook.com/js/api_lib/v0.4/FeatureLoader.js.php' %>
+</head>
+
+<body>
+  <div id="header">
+    <div class="header_content">
+    <a href="/" class="title"><img src="/images/runaround_logo.gif" /></a>
+    <!-- login line -->
+    <%- if facebook_user -%>
+      <div id="header-profilepic">
+        <fb:profile-pic uid="<%= facebook_user %>" size="square" facebook-logo="true" ></fb:profile-pic>
+      </div>
+      <div id="header-account">
+        <b>Welcome, <%= facebook_user.name %></b>
+        <div class="account_links">
+          <%= link_to 'Account Settings', :controller => 'account', :action => 'settings' %> |
+          <%= link_to_function 'Logout of Facebook', 'FB.Connect.logout(function() {logout()})' %>
+        </div>
+      </div>
+      
+    <%- elsif current_user -%>
+      <div id="header-account">
+        <b>Welcome, <%= current_user.name %></b>
+        <div class="account_links">
+          <%= link_to 'Account Settings', :controller => 'account', :action => 'settings' %> | <%= link_to 'Logout', :controller => 'login', :action => 'logout' %>
+          <br/>
+        </div>
+      </div>
+
+    <%- else -%>
+      <div class="account">
+        Hello Guest | <%= link_to 'Register for an account', :controller => 'login', :action => 'register' %></a>
+      </div>
+    <%- end -%>
+    </div>
+  </div>
+  <div class="body_content">
+    <%= yield %>
+  </div>
+  <div class="footer_stuff">This is an awesome running app.</div>
+  <%= javascript_tag "window.api_key = '#{Facebooker.api_key}';" %>
+  <%= javascript_tag "window.xd_receiver_location = '#{ENV['XD_RECEIVER_LOCATION']}';" %>
+  <%= javascript_tag "window.facebook_authenticate_location = '#{ENV['FACEBOOK_AUTHENTICATE_LOCATION']}';" %>
+  <%= javascript_include_tag 'facebook_require' %>
+</body>
+</html>
+

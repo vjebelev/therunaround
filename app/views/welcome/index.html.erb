@@ -1,0 +1,6 @@
+<%- if current_user -%>
+  <%= render :partial => 'logged_in_index' %>
+<%- else -%>
+  <%= render :partial => 'not_logged_in_index' %>
+<%- end -%>
+

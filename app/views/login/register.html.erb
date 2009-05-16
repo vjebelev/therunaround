@@ -1,0 +1,62 @@
+<!-- Eventually do CSSification -->
+<div class="register">
+  <% unless params[:fb_user] %>
+  <div class="login_sector">
+    <h2>Do you use Facebook?</h2>
+      Use Facebook to register for The Run Around:<br/><br />
+      <%= render :partial => '/shared/fbconnect_button' %>
+  </div>
+  <% end %>
+
+  <div class="login_sector_fb">
+    <h2>Register</h2>
+
+    <% form_for :user, :action => 'register' do |user| %>
+
+    <% if params[:fb_user] %>
+      <%= hidden_field_tag(:fb_user, 1) %>
+    <% end %>
+
+    <table>
+      <tr>
+        <td>
+          <label id="label_username" for="username">Username:</input>
+        </td>
+        <td>
+          <%= user.text_field :username, :size => 20, :class => 'inputtext' %>
+        </td>
+      </tr>
+
+      <% unless params[:fb_user] %>
+      <tr>
+        <td>
+          <label id="label_password" for="password">Password:</label>
+        </td>
+        <td>
+          <%= user.password_field :password, :size => 20, :class => 'inputtext' %>
+        </td>
+      </tr>
+      <% end %>
+
+      <tr>
+        <td>
+          <label id="label_email" for="email">Email:</label>
+        </td>
+        <td>
+          <%= user.text_field :email, :size => 20, :class => 'inputtext' %>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <label id="label_name" for="name">Name:</label>
+        </td>
+        <td>
+          <%= user.text_field :name, :size => 20, :class => 'inputtext' %>
+        </td>
+      </tr>
+    </table>
+    <input type="submit" class="inputsubmit" value="Register" style="margin-left: 80px">
+    <% end %>
+  </div>
+</div>
+

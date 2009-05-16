@@ -1,0 +1,49 @@
+<%= render :partial => '/shared/flashboard' %>
+
+<table class="account_table">
+  <tr>
+    <td>
+      <h3>Account settings for <b><%= current_user.name %></b></h3>
+      <p>You can edit information about yourself here.</p>
+      <% form_for :current_user do |form| %> 
+        <%= form.error_messages %>
+        <table class="editor">
+          <tr>
+            <td><label id="label_name" for="name">Name</label></td>
+            <td><%= form.text_field :name, :size => 20, :class => 'inputtext' %></td>
+          </tr>
+          <tr>
+            <td><label id="label_email" for="email">Email</label></td>
+            <td><%= form.text_field :email, :size => 20, :class => 'inputtext' %></td>
+          </tr>
+          <% if current_user.is_facebook_user? %>
+          <tr>
+            <td><label id="label_email_settings" for="email_settings">Email Settings</label></td>
+            <td><a href="#" onclick="facebook_prompt_permission(\'email\'); return false;">Receive Email Updates</a></td>
+          </tr>
+          <% end %>
+          <tr>
+            <td><label id="label_password" for="password">Password</label></td>
+            <td><%= form.password_field :password, :size => 20, :class => 'inputtext' %></td>
+          </tr>
+        </table>
+        <%= submit_tag 'Save Changes', :class => 'inputsubmit' %>
+      <% end %>
+    </td>
+    <td>
+      <% if current_user.is_facebook_user? %>
+        <% # If a user has a password, then it means that they can log in independent of their Facebook account. So they should be given the opportunity to Disconnect and maintain their account %>
+        <% if !current_user.password.blank? %>
+          <h3>Connected To Facebook</h3>
+          <p>Your account is linked with a Facebook account.</p>
+          <%= link_to 'Disconnect from Facebook', :action => 'disconnect' %>
+        <% end %>
+      <% else %>
+        <h3>Connect with Facebook</h3>
+        <p>Do you have a Facebook account? Connect it with The Run Around to share your information here, and see which of your friends are here.</p>
+        <%= render :partial => '/shared/fb_connect_button' %>
+      <% end %>
+    <td>
+    </td>
+  </tr>
+</table>

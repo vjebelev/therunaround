@@ -1,0 +1,29 @@
+    <div class="bluebox friends_box">
+      <h3>Friends</h3>
+      <table class="friends_table">
+      <% friends = facebook_user.friends_with_this_app %>
+      <% if friends.any? %>
+        <% friends.each do |friend| %>
+          <tr class="friend_row">
+            <td class="profilepic"><%= fb_profile_pic(friend, :size => 'square') %></td>
+            <td class="user">
+              <div class="name"><%= friend.name %></div>
+              <div class="status"><%= fb_user_status(friend) %></div>
+            </td>
+            <td class="lastrun">
+              <% if user = User.find_by_fb_uid(friend.uid) %>
+                <% if user.runs.any? %>
+                  <% latest_run = user.runs.last %>
+                  <%= pluralize(latest_run.miles, 'mile') %> on <%= latest_run.date.strftime("%m/%d/%Y") %>
+                <% else %>
+                  No runs ... yet.
+                <% end %>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      <% else %>
+        You don't have any friends yet!
+      <% end %>
+      </table>
+    </div>
