@@ -86,3 +86,19 @@ function logout() {
   window.location = '/login/logout';
 }
 
+/*
+ * Show the feed form. This would be typically called in response to the
+ * onclick handler of a "Publish" button, or in the onload event after
+ * the user submits a form with info that should be published.
+ *
+ */
+function facebook_publish_feed_story(form_bundle_id, template_data) {
+  // Load the feed form
+  FB.ensureInit(function() {
+          FB.Connect.showFeedDialog(form_bundle_id, template_data);
+          //FB.Connect.showFeedDialog(form_bundle_id, template_data, null, null, FB.FeedStorySize.shortStory, FB.RequireConnect.promptConnect);
+
+      // hide the "Loading feed story ..." div
+      // ge('feed_loading').style.visibility = "hidden";
+  });
+}

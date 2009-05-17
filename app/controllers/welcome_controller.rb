@@ -8,17 +8,7 @@ class WelcomeController < ApplicationController
             flash[:notice] = 'Added a new run!'
 
             if params[:publish_to_facebook]
-              respond_to do |format|
-                format.js {
-                  data = {
-                    'distance' => params[:miles],
-                    'location' => params[:route]
-                  }.to_json
-                  render :update do |page|
-                    page << "FB.Connect.showFeedDialog(#{RunPublisher.new_run_template_id}, data, null, null, null, RequireConnect.require, null);"
-                  end
-                }
-              end
+              @facebook_publish_feed_story = facebook_publish_feed_story(params)
             end
           else
             flash[:error] = 'Something went wrong while saving the run.'
