@@ -55,9 +55,4 @@ class FbConnectController < ApplicationController
 
     render :nothing => true
   end
-
-  def post_remove
-    # TODO unlink the fb user
-    render :nothing => true
-  end
 end
