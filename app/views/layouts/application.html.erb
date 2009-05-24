@@ -11,7 +11,7 @@
 <body>
   <div id="header">
     <div class="header_content">
-    <a href="/" class="title"><img src="/images/runaround_logo.gif" /></a>
+      <%= link_to(image_tag('runaround_logo.gif'), root_url, {:class => 'title'}) %>
     <!-- login line -->
     <%- if facebook_user -%>
       <div id="header-profilepic">

@@ -7,9 +7,9 @@
       <% form_tag :controller => 'login', :action => 'login' do %>
         <div class="login_sector">
           <div class="login_prompt"><b>Login</b>:</div>
-          <div class="clearfix"><label>Username:</label><%= text_field_tag :username, params[:username], :size => 20, :class => 'inputtext' %></div>
-          <div class="clearfix"><label>Password:</label><%= password_field_tag :password, params[:password], :size => 20, :class => 'inputtext' %></div>
-          <input id="submit" class="inputsubmit" value="Login" name="submit" type="submit" />
+          <div class="clearfix"><%= label_tag(:username, 'Username') %><%= text_field_tag :username, params[:username], :size => 20, :class => 'inputtext' %></div>
+          <div class="clearfix"><%= label_tag(:password, 'Password') %><%= password_field_tag :password, params[:password], :size => 20, :class => 'inputtext' %></div>
+          <%= submit_tag('Login', :class => 'inputsubmit') %>
         </div>
       <%- end -%>
 

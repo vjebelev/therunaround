@@ -13,7 +13,7 @@
       <table class="add_run_table">
         <tr>
           <td class="editor_key">
-            <label id="label_route" for="route">Where did you go?</label>
+            <%= label_tag(:route, 'Where did you go?', {:id => 'label_route'}) %>
           </td>
           <td class="editor_value">
             <%= text_field_tag :route, '', :size => 20, :class => 'inputtext' %>
@@ -21,33 +21,32 @@
         </tr>
         <tr>
           <td class="editor_key">
-            <label id="label_miles" for="miles">Number of Miles</label>
+            <%= label_tag(:miles, 'Number of Miles', {:id => 'label_miles'}) %>
           </td>
           <td class="editor_value">
             <%= text_field_tag :miles, '', :size => 20, :class => 'inputtext' %>
           </td>
         </tr>
         <tr>
-          <td class="editor_key"><label>Date (MM/DD/YYYY)</label></td>
+          <td class="editor_key"><%= label_tag(:date, 'Date (MM/DD/YYYY)') %></td>
           <td class="editor_value">
             <%= text_field_tag :date_month, '', :size => 2, :maxlength => 2, :class => 'inputtext datefield' %>
             /<%= text_field_tag :date_day, '', :size => 2, :maxlength => 2, :class => 'inputtext datefield' %>
             /<%= text_field_tag :date_year, '', :size => 4, :maxlength => 4, :class => 'inputtext datefield' %>
            |
-           <a onclick="populate_date('<%= Time.now.mon %>', '<%= Time.now.day %>', '<%= Time.now.year %>'); return false;">Today</a>
+           <%= link_to_function('Today', "populate_date('#{Time.now.mon}', '#{Time.now.day}', '#{Time.now.year}')") %>
            |
-           <a onclick="populate_date('<%= Time.now.yesterday.mon %>', '<%= Time.now.yesterday.day %>', '<%= Time.now.yesterday.year %>'); return false;">Yesterday</a>
+           <%= link_to_function('Yesterday', "populate_date('#{Time.now.yesterday.mon}', '#{Time.now.yesterday.day}', '#{Time.now.yesterday.year}')") %>
           </td>
         </tr>
       </table>
 
-      <%- style = facebook_user ? '' : 'visibility:hidden' %>
-      <p id="publish_fb_checkbox" style="<%= style %>">
-        <img src="http://static.ak.fbcdn.net/images/icons/favicon.gif" />
-        <input type="checkbox" name="publish_to_facebook" checked />
+      <p id="publish_fb_checkbox" style="<%= facebook_user ? '' : 'display:none' %>">
+        <%= image_tag('http://static.ak.fbcdn.net/images/icons/favicon.gif') %>
+        <%= check_box_tag(:publish_to_facebook, 0, true) %>
         Publish this run to Facebook
       </p>
-      <input class="inputsubmit" type="submit" name="submit" value="Add Run"/>
+      <%= submit_tag('Add Run', :class => 'inputsubmit') %>
     <%- end -%>
   </div>
 

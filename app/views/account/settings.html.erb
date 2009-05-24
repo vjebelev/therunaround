@@ -9,21 +9,21 @@
         <%= form.error_messages %>
         <table class="editor">
           <tr>
-            <td><label id="label_name" for="name">Name</label></td>
+            <td><%= form.label :name, 'Name' %></td>
             <td><%= form.text_field :name, :size => 20, :class => 'inputtext' %></td>
           </tr>
           <tr>
-            <td><label id="label_email" for="email">Email</label></td>
+            <td><%= form.label :email, 'Email', {:id => 'label_email'} %></td>
             <td><%= form.text_field :email, :size => 20, :class => 'inputtext' %></td>
           </tr>
           <% if current_user.is_facebook_user? %>
           <tr>
-            <td><label id="label_email_settings" for="email_settings">Email Settings</label></td>
-            <td><a href="#" onclick="facebook_prompt_permission(\'email\'); return false;">Receive Email Updates</a></td>
+            <td><%= form.label :email_settings, 'Email Settings', {:id => 'label_email_settings'} %></td>
+            <td><%= link_to_function('Receive Email Updates', "facebook_prompt_permission('email')") %></td>
           </tr>
           <% end %>
           <tr>
-            <td><label id="label_password" for="password">Password</label></td>
+            <td><%= form.label :password, 'Password', {:id => 'label_password'} %></td>
             <td><%= form.password_field :password, :size => 20, :class => 'inputtext' %></td>
           </tr>
         </table>

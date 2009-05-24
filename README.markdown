@@ -6,7 +6,7 @@ Facebook The Run Around app, done in Rails.
 Installation
 ------------
 
-This assume we're installing to an Apache Phusion Passenger stack.
+This assumes we're installing to an Apache Phusion Passenger stack.
 
 1. Clone the app:
 
