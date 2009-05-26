@@ -7,10 +7,10 @@
 # This should only be necessary until the final version of the new profile is released.
 
 development:
-  api_key: 9458db456b3e1c464b888d42ae611988
-  secret_key: a46f024f9c1a31de3860986a9878c154
-  canvas_page_name: vj__trr
-  callback_url: http://trr.jebelev.com/
+  api_key: "YOUR FACEBOOK API KEY"
+  secret_key: "YOUR FACEBOOK SECRET"
+  canvas_page_name:
+  callback_url: 
   pretty_errors: true
   set_asset_host_to_callback_url: false
 
