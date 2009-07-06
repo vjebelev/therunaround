@@ -11,6 +11,7 @@ class FbConnectController < ApplicationController
       secure_with_token!
       session[:facebook_session] = @facebook_session
       logger.debug "facebook session in connect: #{facebook_session.inspect}"
+      logger.debug "facebook request in connect: #{request.inspect}"
 
       if facebook_user
         if user = User.find_by_fb_uid(facebook_user.uid)
