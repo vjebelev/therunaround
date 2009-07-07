@@ -5,12 +5,12 @@ development:
   host: 127.0.0.1
   database: trr_development
   username: root
-  password: root
+  password:
 
 test:
   adapter: mysql
   host: 127.0.0.1
   database: trr_test
   username: root
-  password: root
+  password:
 
