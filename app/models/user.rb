@@ -11,6 +11,13 @@ class User < ActiveRecord::Base
     runs.to_a.sum(&:miles)
   end
 
+  def email_hash
+    if !(h = read_attribute(:email_hash))
+      h = write_attribute(:email_hash, build_email_hash(email))
+    end
+    return h
+  end
+
   def email=(email)
     self.email_hash = build_email_hash(email)
     write_attribute(:email, email)
