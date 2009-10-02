@@ -24,28 +24,40 @@ module Rack
   #   end
   #
   class Facebook
-    def initialize(app, secret_key, &condition)
+    def initialize(app, &condition)
       @app = app
-      @secret_key = secret_key
       @condition = condition
     end
     
     def call(env)
-      if @condition.nil? || @condition.call(env)
-        request = Rack::Request.new(env)
-        fb_params = extract_fb_sig_params(request.POST)
-        unless fb_params.empty?
-          unless signature_is_valid?(fb_params, request.POST['fb_sig'])
-            return Rack::Response.new(["Invalid Facebook signature"], 400).finish
-          end
-          env['REQUEST_METHOD'] = fb_params["request_method"] if fb_params["request_method"]
-          convert_parameters!(request.POST)
-        end
+      return @app.call(env) unless @condition.nil? || @condition.call(env)
+
+      request = Rack::Request.new(env)
+      fb_sig, fb_params = nil, nil
+
+      [ request.POST, request.GET ].each do |params|
+        fb_sig, fb_params = fb_sig_and_params( params )
+        break if fb_sig
       end
-      @app.call(env)
+
+      return @app.call(env) if fb_params.empty?
+
+      Facebooker.with_application(fb_params['api_key']) do
+        unless signature_is_valid?(fb_params, fb_sig)
+          return Rack::Response.new(["Invalid Facebook signature"], 400).finish
+        end
+        env['REQUEST_METHOD'] = fb_params["request_method"] if fb_params["request_method"]
+        convert_parameters!(request.params)
+        @app.call(env)
+      end
     end
     
     private
+
+    def fb_sig_and_params( params )
+      return nil, [] unless params['fb_sig']
+      return params['fb_sig'], extract_fb_sig_params(params)
+    end
 
     def extract_fb_sig_params(params)
       params.inject({}) do |collection, (param, value)|
@@ -56,7 +68,7 @@ module Rack
     
     def signature_is_valid?(fb_params, actual_sig)
       raw_string = fb_params.map{ |*args| args.join('=') }.sort.join
-      expected_signature = Digest::MD5.hexdigest([raw_string, @secret_key].join)
+      expected_signature = Digest::MD5.hexdigest([raw_string, Facebooker.secret_key].join)
       actual_sig == expected_signature
     end
     

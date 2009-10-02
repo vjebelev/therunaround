@@ -1,11 +1,19 @@
 require 'test/unit'
 require 'rubygems'
+
+begin
+  require 'nokogiri'
+rescue LoadError
+  # Should work without nokogiri
+end
+
 begin
   require 'multi_rails_init'
 rescue LoadError
   # multi rails not installed, test against newest supported version of Rails
   gem 'rails', '2.2.2'
 end
+require 'activesupport'
 require 'flexmock/test_unit'
 require 'mocha'
 
@@ -21,26 +29,26 @@ end
 require 'facebooker'
 require 'facebooker/rails/test_helpers'
 
-
 class Test::Unit::TestCase
-  include Facebooker::Rails::TestHelpers
-    
+
+  include Facebooker::Rails::TestHelpers unless self.included_modules.include?( Facebooker::Rails::TestHelpers )
+
   private
-  
+
   def expect_http_posts_with_responses(*responses_xml)
     mock_http = establish_session
     responses_xml.each do |xml_string|
       mock_http.should_receive(:post_form).and_return(xml_string).once.ordered(:posts)
-    end   
+    end
   end
-  
+
   def establish_session(session = @session)
     mock = flexmock(Net::HTTP).should_receive(:post_form).and_return(example_auth_token_xml).once.ordered(:posts)
     mock.should_receive(:post_form).and_return(example_get_session_xml).once.ordered(:posts)
-    session.secure!    
+    session.secure!
     mock
   end
-  
+
   def example_auth_token_xml
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>
@@ -51,7 +59,7 @@ class Test::Unit::TestCase
         </auth_createToken_response>    
     XML
   end
-  
+
   def example_get_session_xml
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>

@@ -6,58 +6,87 @@ class Facebooker::SessionTest < Test::Unit::TestCase
 
   def setup
     ENV['FACEBOOK_API_KEY'] = '1234567'
-    ENV['FACEBOOK_SECRET_KEY'] = '7654321'   
-    Facebooker.current_adapter = nil 
-    @session = Facebooker::Session.create('whatever', 'doesnotmatterintest')   
+    ENV['FACEBOOK_SECRET_KEY'] = '7654321'
+    Facebooker.current_adapter = nil
+    @session = Facebooker::Session.create('whatever', 'doesnotmatterintest')
     Facebooker.use_curl=false
   end
 
   def teardown
     Facebooker::Session.configuration_file_path = nil
-    super    
+    super
   end
-  
+
   def test_install_url_escapes_optional_next_parameter
     session = Facebooker::CanvasSession.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     assert_equal("http://www.facebook.com/install.php?api_key=1234567&v=1.0&next=next_url%3Fa%3D1%26b%3D2", session.install_url(:next => "next_url?a=1&b=2"))
   end
-  
+
+  def test_permission_url_returns_correct_url_and_parameters
+    fb_url = "http://www.facebook.com/connect/prompt_permissions.php?api_key=#{ENV['FACEBOOK_API_KEY']}&v=1.0&next=next_url&ext_perm=publish_stream,email"
+    url = Facebooker::Session.new(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY']).connect_permission_url('publish_stream,email', {:next => 'next_url'})
+    assert_equal url, fb_url
+  end
+
+  def test_login_url_skips_all_parameters_when_not_passed_or_false
+    session = Facebooker::Session.new(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
+    url = session.login_url({:fbconnect => false})
+    expected_url = Facebooker.login_url_base
+    assert_equal url, expected_url
+  end
+
+  def test_login_url_adds_all_parameters_when_passed
+    login_options = {:skipcookie => true,
+                     :hide_checkbox => true,
+                     :canvas => true,
+                     :fbconnect => true,
+                     :req_perms => 'publish_stream',
+                     :next => 'http://example.com'}
+
+    session = Facebooker::Session.new(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
+    url = session.login_url(login_options)
+    expected_url = "#{Facebooker.login_url_base}&next=#{CGI.escape(login_options[:next])}&hide_checkbox=true&canvas=true&fbconnect=true&req_perms=publish_stream"
+    assert_equal url, expected_url
+  end
+
   def test_can_get_api_and_secret_key_from_environment
     assert_equal('1234567', Facebooker::Session.api_key)
-    assert_equal('7654321', Facebooker::Session.secret_key)    
+    assert_equal('7654321', Facebooker::Session.secret_key)
   end
-  
+
   def test_if_keys_are_not_available_via_environment_then_they_are_gotten_from_a_file
     ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'] = nil
+    Facebooker.instance_variable_set('@facebooker_configuration', nil)
     flexmock(File).should_receive(:read).with(File.expand_path("~/.facebookerrc")).once.and_return('{:api => "foo"}')
     assert_equal('foo', Facebooker::Session.api_key)
   end
-  
+
   def test_if_environment_and_file_fail_to_match_then_an_exception_is_raised
     ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'] = nil
+    Facebooker.instance_variable_set('@facebooker_configuration', nil)
     flexmock(File).should_receive(:read).with(File.expand_path("~/.facebookerrc")).once.and_return {raise Errno::ENOENT, "No such file"}
     assert_raises(Facebooker::Session::ConfigurationMissing) {
       Facebooker::Session.api_key
     }
   end
-  
+
   def test_marshal_stores_api_key
     data = Marshal.dump(@session)
     loaded_session = Marshal.load(data)
     assert_equal 'whatever', loaded_session.instance_variable_get("@api_key")
   end
-  
+
   def test_marshal_stores_secret_key
     data = Marshal.dump(@session)
     loaded_session = Marshal.load(data)
-    assert_equal 'doesnotmatterintest', loaded_session.instance_variable_get("@secret_key")    
+    assert_equal 'doesnotmatterintest', loaded_session.instance_variable_get("@secret_key")
   end
-  
+
   def test_configuration_file_path_can_be_set_explicitly
     Facebooker::Session.configuration_file_path = '/tmp/foo'
     assert_equal('/tmp/foo', Facebooker::Session.configuration_file_path)
   end
-  
+
   def test_session_can_be_secured_with_existing_values
     session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     session.secure_with!("a session key", "123456", Time.now.to_i + 60)
@@ -74,31 +103,31 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     assert_equal 'a session key', session.session_key
     assert_equal 321, session.user.to_i
   end
-  
+
   # The Facebook API for this is hideous.  Oh well.
   def test_can_ask_session_to_check_friendship_between_pairs_of_users
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     mock_http = establish_session
     mock_http.should_receive(:post_form).and_return(example_check_friendship_xml).once.ordered(:posts)
-    assert_equal({[222332, 222333] => true, [1240077, 1240079] => false}, @session.check_friendship([[222332, 222333], [1240077, 1240079]]))    
+    assert_equal({[222332, 222333] => true, [1240077, 1240079] => false}, @session.check_friendship([[222332, 222333], [1240077, 1240079]]))
   end
-  
+
   def test_facebook_can_claim_ignorance_as_to_friend_relationships
     mock_http = establish_session
-    mock_http.should_receive(:post_form).and_return(example_check_friendship_with_unknown_result).once.ordered(:posts)  
-    assert_equal({[1240077, 1240079] => nil}, @session.check_friendship([[1240077, 1240079]]))  
+    mock_http.should_receive(:post_form).and_return(example_check_friendship_with_unknown_result).once.ordered(:posts)
+    assert_equal({[1240077, 1240079] => nil}, @session.check_friendship([[1240077, 1240079]]))
   end
-  
+
   def test_can_query_with_fql
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
-    expect_http_posts_with_responses(example_fql_for_multiple_photos_xml)    
+    expect_http_posts_with_responses(example_fql_for_multiple_photos_xml)
     response = @session.fql_query('Lets be frank. We are not testing the query here')
-    assert_kind_of(Facebooker::Photo, response.first)      
+    assert_kind_of(Facebooker::Photo, response.first)
   end
-  
+
   def test_anonymous_fql_results_get_put_in_a_positioned_array_on_the_model
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
-    expect_http_posts_with_responses(example_fql_for_multiple_photos_with_anon_xml)    
+    expect_http_posts_with_responses(example_fql_for_multiple_photos_with_anon_xml)
     response = @session.fql_query('Lets be frank. We are not testing the query here')
     assert_kind_of(Facebooker::Photo, response.first)
     response.each do |photo|
@@ -107,11 +136,11 @@ class Facebooker::SessionTest < Test::Unit::TestCase
   end
   def test_no_results_returns_empty_array
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
-    expect_http_posts_with_responses(no_results_fql)    
+    expect_http_posts_with_responses(no_results_fql)
     response = @session.fql_query('Lets be frank. We are not testing the query here')
     assert_equal [],response
   end
-  
+
   def test_can_fql_query_for_event_members
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     expect_http_posts_with_responses(example_fql_query_event_members_xml)
@@ -120,6 +149,22 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     assert_equal('attending', response.first.rsvp_status)
   end
   
+  def test_can_fql_query_for_events
+    @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
+    expect_http_posts_with_responses(example_fql_query_events_xml)
+    response = @session.fql_query("DOES NOT REALLY MATTER FOR TEST")
+    assert_kind_of(Facebooker::Event, response.first)
+    assert_equal('Technology Tasting', response.first.name)
+  end
+  
+  def test_can_fql_query_for_albums
+    @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
+    expect_http_posts_with_responses(example_fql_query_albums_xml)
+    response = @session.fql_query("DOES NOT REALLY MATTER FOR TEST")
+    assert_kind_of(Facebooker::Album, response.first)
+    assert_equal('Films you will never see', response.first.name)
+  end
+
   def test_can_query_for_event_members
     expect_http_posts_with_responses(example_event_members_xml)
     event_attendances = @session.event_members(69)
@@ -129,18 +174,48 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     assert_equal 5, event_attendances.size
   end
   
+  def test_query_for_event_members_caching_honors_params
+    @session.expects(:post).returns(["1"])
+    assert_equal ["1"], @session.event_members(100)
+    @session.expects(:post).returns(["2"])
+    assert_equal ["2"],@session.event_members(200)
+    @session.expects(:post).never
+    assert_equal ["1"],@session.event_members(100)
+  end
+  
+  def test_can_create_events
+    mock_http = establish_session
+    mock_http.should_receive(:post_multipart_form).and_return(example_event_create_xml).once
+    event_id = @session.create_event(:name => 'foo', :category => 'bar')
+    assert_equal '34444349712', event_id
+  end
+  
+  def test_can_cancel_events
+    expect_http_posts_with_responses(example_event_cancel_xml)
+    assert @session.cancel_event("12345", :cancel_message => "It's raining")
+  end
+
   def test_can_query_for_events
-    expect_http_posts_with_responses(example_events_get_xml)    
+    expect_http_posts_with_responses(example_events_get_xml)
     events = @session.events
     assert_equal 'Technology Tasting', events.first.name
   end
   
+  def test_query_for_events_caching_honors_params
+    @session.expects(:post).returns([{:eid=>1}])
+    assert_equal 1, @session.events.first[:eid]
+    @session.expects(:post).returns([{:eid=>2}])
+    assert_equal 2,@session.events(:start_time=>1.day.ago).first[:eid]
+    @session.expects(:post).never
+    assert_equal 1,@session.events.first[:eid]
+  end
+
   def test_can_query_for_groups
-    expect_http_posts_with_responses(example_groups_get_xml)    
+    expect_http_posts_with_responses(example_groups_get_xml)
     groups = @session.user.groups
     assert_equal 'Donald Knuth Is My Homeboy', groups.first.name
   end
-  
+
   def test_can_query_for_group_memberships
     expect_http_posts_with_responses(example_group_members_xml)
     example_group = Facebooker::Group.new({:gid => 123, :session => @session})
@@ -149,18 +224,27 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     assert_equal(123, group_memberships.last.gid)
     assert_equal(1240078, example_group.members.last.id)
   end
-  
+
   def test_can_fql_query_for_users_and_pictures
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     mock_http = establish_session
-    mock_http.should_receive(:post_form).and_return(example_fql_for_multiple_users_and_pics).once.ordered(:posts)  
+    mock_http.should_receive(:post_form).and_return(example_fql_for_multiple_users_and_pics).once.ordered(:posts)
     response = @session.fql_query('SELECT name, pic FROM user WHERE uid=211031 OR uid=4801660')
     assert_kind_of Array, response
     assert_kind_of Facebooker::User, response.first
     assert_equal "Ari Steinberg", response.first.name
   end
-  
-  
+
+  def test_can_fql_multiquery_for_users_and_pictures
+    @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
+    mock_http = establish_session
+    mock_http.should_receive(:post_form).and_return(example_fql_multiquery_xml).once.ordered(:posts)
+    response = @session.fql_multiquery({:query => 'SELECT name, pic FROM user WHERE uid=211031 OR uid=4801660'})
+    assert_kind_of Array, response["query1"]
+    assert_kind_of Facebooker::User, response["query1"].first
+    assert_equal "Ari Steinberg", response["query1"].first.name
+  end
+
   def test_can_send_notification_with_object
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     @session.expects(:post).with('facebook.notifications.send',{:to_ids=>"1",:notification=>"a",:type=>"user_to_user"},true)
@@ -175,30 +259,81 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     @session.expects(:post).with('facebook.notifications.send',{:to_ids=>"1",:notification=>"a", :type=>"user_to_user"},true)
     @session.send_notification(["1"],"a")
   end
-  
+
   def test_can_send_announcement_notification
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     @session.expects(:post).with('facebook.notifications.send',{:to_ids=>"1",:notification=>"a", :type=>"app_to_user"},false)
     @session.send_notification(["1"],"a")
   end
-  
+
   def test_can_register_template_bundle
     expect_http_posts_with_responses(example_register_template_bundle_return_xml)
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     assert_equal 17876842716, @session.register_template_bundle("{*actor*} did something")
   end
-  
+
   def test_can_register_template_bundle_with_action_links
     expect_http_posts_with_responses(example_register_template_bundle_return_xml)
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     assert_equal 17876842716, @session.register_template_bundle("{*actor*} did something",nil,nil,[{:text=>"text",:href=>"href"}])
   end
+  
+  def test_can_register_template_bundle_with_short_story
+    one_line = "{*actor*} did something"
+    short_story = { :title => 'title', :body => 'body' }
+    
+    @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
+    @session.expects(:post).with(
+      'facebook.feed.registerTemplateBundle',
+      {:one_line_story_templates => [one_line].to_json, :short_story_templates => [short_story].to_json},
+      false
+    )
+    @session.register_template_bundle(one_line, short_story)
+  end
+  
+  def test_can_register_template_bundle_with_short_story_for_several_templates
+    one_line = ["{*actor*} did something", "{*actor*} did something again"]
+    short_story = [{ :title => 'title', :body => 'body' }, { :title => 'title2', :body => 'body2' }]
+    
+    @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
+    @session.expects(:post).with(
+      'facebook.feed.registerTemplateBundle',
+      {:one_line_story_templates => one_line.to_json, :short_story_templates => short_story.to_json},
+      false
+    )
+    @session.register_template_bundle(one_line, short_story)
+  end
+  
+  def test_can_register_template_bundle_with_full_story_for_several_templates
+    one_line = ["{*actor*} did something", "{*actor*} did something again"]
+    short_story = [{ :title => 'title', :body => 'body' }, { :title => 'title2', :body => 'body2' }]
+    full_story = { :title => 'title', :body => 'body' }
+    
+    @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
+    @session.expects(:post).with(
+      'facebook.feed.registerTemplateBundle',
+      {:one_line_story_templates => one_line.to_json, :short_story_templates => short_story.to_json, :full_story_template => full_story.to_json},
+      false
+    )
+    @session.register_template_bundle(one_line, short_story, full_story)
+  end
+  
+  def test_can_deactivate_template_bundle_by_id
+    @session = Facebooker::Session.create(ENV['FACBEOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
+    @session.expects(:post).with(
+      'facebook.feed.deactivateTemplateBundleByID',
+      {:template_bundle_id => '999'},
+      false
+    )
+    @session.deactivate_template_bundle_by_id(999)
+  end
+
   def test_can_publish_user_action
     expect_http_posts_with_responses(publish_user_action_return_xml)
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     assert @session.publish_user_action(17876842716,{})
   end
-  
+
   def test_logs_api_calls
     call_name = 'sample.api.call'
     params = { :param1 => true, :param2 => 'value' }
@@ -207,7 +342,7 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     @session.post(call_name, params)
   end
-  
+
   def test_requests_inside_batch_are_added_to_batch
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     @session.send(:service).expects(:post).once
@@ -215,14 +350,14 @@ class Facebooker::SessionTest < Test::Unit::TestCase
       @session.send_notification(["1"],"a")
       @session.send_notification(["1"],"a")
     end
-    
+
   end
 
   def test_parses_batch_response
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     expect_http_posts_with_responses(example_batch_run_xml)
     @session.batch do
-      @fql_response = @session.fql_query('SELECT name, pic FROM user WHERE uid=211031 OR uid=4801660')      
+      @fql_response = @session.fql_query('SELECT name, pic FROM user WHERE uid=211031 OR uid=4801660')
     end
     assert_kind_of(Facebooker::Event::Attendance, @fql_response.first)
     assert_equal('attending', @fql_response.first.rsvp_status)
@@ -231,9 +366,9 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     expect_http_posts_with_responses(example_batch_run_xml)
     Facebooker::FqlQuery.expects(:process).raises(NoMethodError.new)
-    
+
     @session.batch do
-      @fql_response = @session.fql_query('SELECT name, pic FROM user WHERE uid=211031 OR uid=4801660')      
+      @fql_response = @session.fql_query('SELECT name, pic FROM user WHERE uid=211031 OR uid=4801660')
     end
     assert_raises(NoMethodError) {
       @fql_response.first
@@ -244,7 +379,7 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     Facebooker::BatchRun.current_batch=4
     assert_equal 4,Facebooker::BatchRun.current_batch
   end
-  
+
   def test_can_get_stanard_info
     expect_http_posts_with_responses(standard_info_xml)
     result = @session.users_standard([4])
@@ -267,21 +402,48 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     assert_equal "4846711747", page.page_id
     assert_equal "Kronos Quartet", page.name
     assert_equal "http://www.kronosquartet.org", page.website
-    
+
     # TODO we really need a way to differentiate between hash/list and text attributes
     # assert_equal({}, page.company_overview)
-    
+
     # sakkaoui : as a fix to the parser, I replace empty text node by "" instead of {}
     # we have child.attributes['list'] == 'true' that let us know that we have a hash/list.
     assert_equal("", page.company_overview)
-    
+
     genre = page.genre
     assert_equal false, genre.dance
     assert_equal true, genre.party
   end
-    
+
   private
-  
+
+  def example_fql_multiquery_xml
+    <<-XML
+<?xml version="1.0" encoding="UTF-8"?>
+<fql_multiquery_response xmlns="http://api.facebook.com/1.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://api.facebook.com/1.0/ http://api.facebook.com/1.0/facebook.xsd" list="true">
+  <fql_result>
+    <name>query1</name>
+    <results list="true">
+      <user>
+        <name>Ari Steinberg</name>
+        <uid>46903192</uid>
+        <rsvp_status xsi:nil="true"/>
+      </user>
+    </results>
+  </fql_result>
+  <fql_result>
+    <name>query2</name>
+    <results list="true">
+      <user>
+        <name>Lisa Petrovskaia</name>
+        <pic xsi:nil="true"/>
+      </user>
+    </results>
+  </fql_result>
+</fql_multiquery_response>
+XML
+  end
+
   def example_groups_get_xml
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>
@@ -312,10 +474,28 @@ class Facebooker::SessionTest < Test::Unit::TestCase
           <country>United States</country>
         </venue>
       </group>
-    </groups_get_response>    
+    </groups_get_response>
     XML
   end
   
+  def example_event_create_xml
+    <<-XML
+    <?xml version="1.0" encoding="UTF-8"?>
+    <events_create_response xmlns="http://api.facebook.com/1.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://api.facebook.com/1.0/ http://api.facebook.com/1.0/facebook.xsd">
+      34444349712
+    </events_create_response> 
+    XML
+  end
+  
+  def example_event_cancel_xml
+    <<-XML
+    <?xml version="1.0" encoding="UTF-8"?>
+    <events_cancel_response xmlns="http://api.facebook.com/1.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://api.facebook.com/1.0/ http://api.facebook.com/1.0/facebook.xsd">
+      1
+    </events_cancel_response> 
+    XML
+  end
+
   def example_events_get_xml
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>
@@ -343,10 +523,10 @@ class Facebooker::SessionTest < Test::Unit::TestCase
           <country>United States</country>
         </venue>
       </event>
-    </events_get_response>    
+    </events_get_response>
     XML
   end
-  
+
   def example_fql_query_event_members_xml
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>
@@ -364,6 +544,61 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     </fql_query_response>
     XML
   end
+  
+  def example_fql_query_events_xml
+    <<-XML
+    <?xml version="1.0" encoding="UTF-8"?>
+    <fql_query_response xmlns="http://api.facebook.com/1.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://api.facebook.com/1.0/ http://api.facebook.com/1.0/facebook.xsd" list="true">
+      <event>
+        <eid>1037629024</eid>
+        <name>Technology Tasting</name>
+        <tagline>Who said Engineering can't be delicious?</tagline>
+        <nid>12409987</nid>
+        <pic>http://photos-628.facebook.com/ip006/object/1345/48/s1037629024_30775.jpg</pic>
+        <pic_big>http://photos-628.facebook.com/ip006/object/1345/48/n1037629024_30775.jpg</pic_big>
+        <pic_small>http://photos-628.facebook.com/ip006/object/1345/48/t1037629024_30775.jpg</pic_small>
+        <host>Facebook</host>
+        <description>Facebook will be hosting technology thought leaders and avid software engineers for a social evening of technology tasting. We invite you to connect with some of our newest technologies and innovative people over hors d'oeuvres and wine. Come share ideas, ask questions, and challenge existing technology paradigms in the spirit of the open source community.</description>
+        <event_type>Party</event_type>
+        <event_subtype>Cocktail Party</event_subtype>
+        <start_time>1172107800</start_time>
+        <end_time>1172115000</end_time>
+        <creator>1078</creator>
+        <update_time>1170096157</update_time>
+        <location>Facebook's New Office</location>
+        <venue>
+          <street>156 University Ave.</street>
+          <city>Palo Alto</city>
+          <state>CA</state>
+          <country>United States</country>
+        </venue>
+      </event> 
+    </fql_query_response>
+    XML
+  end
+  
+  def example_fql_query_albums_xml
+    <<-XML
+    <?xml version="1.0" encoding="UTF-8"?>
+    <fql_query_response xmlns="http://api.facebook.com/1.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://api.facebook.com/1.0/ http://api.facebook.com/1.0/facebook.xsd" list="true">
+      <album>
+        <aid>34595963571485</aid>
+        <cover_pid>34595991612812</cover_pid>
+        <owner>8055</owner>
+        <name>Films you will never see</name>
+        <created>1132553109</created>
+        <modified>1132553363</modified>
+        <description>No I will not make out with you</description>
+        <location>York, PA</location>
+        <link>http://www.facebook.com/album.php?aid=2002205&id=8055</link>
+        <size>30</size>
+        <visible>friends</visible>
+        <modified_major>1241834423</modified_major>
+      </album>
+    </fql_query_response>
+    XML
+  end
+  
   def example_check_friendship_xml
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>
@@ -378,10 +613,10 @@ class Facebooker::SessionTest < Test::Unit::TestCase
         <uid2>1240079</uid2>
         <are_friends>0</are_friends>
       </friend_info>
-    </friends_areFriends_response>    
+    </friends_areFriends_response>
     XML
   end
-  
+
   def example_check_friendship_with_unknown_result
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>
@@ -391,10 +626,10 @@ class Facebooker::SessionTest < Test::Unit::TestCase
         <uid2>1240079</uid2>
         <are_friends xsi:nil="true"/>
       </friend_info>
-    </friends_areFriends_response>    
+    </friends_areFriends_response>
     XML
   end
-  
+
   def example_fql_for_multiple_users_and_pics
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>
@@ -410,7 +645,7 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     </fql_query_response>
     XML
   end
-  
+
   def example_fql_for_multiple_photos_xml
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>
@@ -462,16 +697,16 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     </fql_query_response>
     XML
   end
-  
+
   def no_results_fql
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>
     <fql_query_response xmlns="http://api.facebook.com/1.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" list="true">
     </fql_query_response>
     XML
-    
+
   end
-  
+
   def example_group_members_xml
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>
@@ -490,21 +725,21 @@ class Facebooker::SessionTest < Test::Unit::TestCase
         <uid>1240078</uid>
       </officers>
       <not_replied list="true"/>
-    </groups_getMembers_response>    
+    </groups_getMembers_response>
     XML
   end
-  
+
   def example_batch_run_xml
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>
     <batch_run_response xmlns="http://api.facebook.com/1.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://api.facebook.com/1.0/ http://api.facebook.com/1.0/facebook.xsd" list="true">
-      <batch_run_response_elt>    
+      <batch_run_response_elt>
       #{CGI.escapeHTML(example_fql_query_event_members_xml)}
       </batch_run_response_elt>
     </batch_run_response>
     XML
   end
-  
+
   def example_event_members_xml
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>
@@ -524,7 +759,7 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     </events_getMembers_response>
     XML
   end
-  
+
   def example_register_template_bundle_return_xml
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>
@@ -551,7 +786,7 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     </pages_getInfo_response>
     XML
   end
-  
+
   def publish_user_action_return_xml
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>
@@ -560,7 +795,7 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     </feed_publishUserAction_response>
     XML
   end
-  
+
   def standard_info_xml
     <<-XML
     <?xml version="1.0" encoding="UTF-8"?>
@@ -574,39 +809,16 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     </users_getStandardInfo_response>
     XML
   end
+  
 end
 
-class PostMethodTest < Test::Unit::TestCase
-  
-  def setup
-    Facebooker.use_curl = true
-    Facebooker::Parser.stubs(:parse)
-    @uri = URI.parse("http://api.facebook.com/api")
-    @service = Facebooker::Service.new("a","b","c")
-    @service.stubs("url").returns(@uri)
-  end
-  
-  def teardown
-    Facebooker.use_curl = false
-  end
-  
-  def test_use_curl_makes_post_with_curl
-    @service.expects(:post_form_with_curl).with(@uri,{:method=>"a"})
-    @service.post(:method=>"a")
-  end
-  
-  def test_use_curl_makes_post_file_use_curl_with_multipart
-    @service.expects(:post_form_with_curl).with(@uri,{:method=>"a"},true)
-    @service.post_file(:method=>"a")    
-  end
-end
 
 class CanvasSessionTest < Test::Unit::TestCase
   def setup
     ENV['FACEBOOK_API_KEY'] = '1234567'
-    ENV['FACEBOOK_SECRET_KEY'] = '7654321'   
+    ENV['FACEBOOK_SECRET_KEY'] = '7654321'
   end
-   
+
   def test_login_url_will_display_callback_url_in_canvas
     session = Facebooker::CanvasSession.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     assert_equal("http://www.facebook.com/login.php?api_key=1234567&v=1.0&canvas=true", session.login_url)

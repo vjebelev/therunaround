@@ -1,35 +1,42 @@
 module ::ActionController
   if Rails.version < '2.3'
-    class AbstractRequest                         
+    class AbstractRequest
       def relative_url_root
         Facebooker.path_prefix
-      end                                         
+      end
     end
   else
-    class Request                         
+    class Request
       def relative_url_root
         Facebooker.path_prefix
-      end                                         
+      end
     end
   end
-  
+
   class Base
-    def self.relative_url_root
-      Facebooker.path_prefix
+    class << self
+      alias :old_relative_url_root :relative_url_root
+      def relative_url_root
+        Facebooker.path_prefix
+      end
     end
-  end  
-  
+  end
+
   class UrlRewriter
+    include Facebooker::Rails::BackwardsCompatibleParamChecks
+
     RESERVED_OPTIONS << :canvas
+
     def link_to_new_canvas?
-      @request.parameters["fb_sig_in_new_facebook"] == "1" 
+      one_or_true @request.parameters["fb_sig_in_new_facebook"]
     end
+
     def link_to_canvas?(params, options)
       option_override = options[:canvas]
       return false if option_override == false # important to check for false. nil should use default behavior
-      option_override || (can_safely_access_request_parameters? && (@request.parameters["fb_sig_in_canvas"] == "1" ||  @request.parameters[:fb_sig_in_canvas] == "1" ))
+      option_override || (can_safely_access_request_parameters? && (one_or_true(@request.parameters["fb_sig_in_canvas"]) || one_or_true(@request.parameters[:fb_sig_in_canvas]) ))
     end
-    
+
     #rails blindly tries to merge things that may be nil into the parameters. Make sure this won't break
     def can_safely_access_request_parameters?
       @request.request_parameters
@@ -48,5 +55,6 @@ module ::ActionController
     end
     
     alias_method_chain :rewrite_url, :facebooker
+
   end
 end

@@ -3,16 +3,21 @@ require 'facebooker/rails/profile_publisher_extensions'
 module Facebooker
   module Rails
     module Controller
+      include Facebooker::Rails::BackwardsCompatibleParamChecks
       include Facebooker::Rails::ProfilePublisherExtensions
       def self.included(controller)
         controller.extend(ClassMethods)
-        #controller.before_filter :set_adapter <-- security hole noted by vchu
         controller.before_filter :set_facebook_request_format
         controller.helper_attr :facebook_session_parameters
         controller.helper_method :request_comes_from_facebook?
       end
 
-    
+      def initialize *args
+        @facebook_session       = nil
+        @installation_required  = nil
+        super
+      end
+
       def facebook_session
         @facebook_session
       end
@@ -25,13 +30,18 @@ module Facebooker
         secure_with_facebook_params! || secure_with_cookies! || secure_with_token!
       end
       
+      #this is used to proxy a connection through a rails app so the facebook secret key is not needed
+      #iphone apps use this
+      def create_facebook_session_with_secret
+        secure_with_session_secret!
+      end
+      
       def set_facebook_session
         # first, see if we already have a session
         session_set = session_already_secured?
         # if not, see if we can load it from the environment
         unless session_set
           session_set = create_facebook_session
-          RAILS_DEFAULT_LOGGER.debug "VZ setting in set_facebook_session"
           session[:facebook_session] = @facebook_session if session_set
         end
         if session_set
@@ -46,6 +56,27 @@ module Facebooker
         @facebook_params ||= verified_facebook_params
       end      
       
+      # Redirects the top window to the given url if the content is in an iframe, otherwise performs
+      # a normal redirect_to call.
+      def top_redirect_to(*args)
+        if request_is_facebook_iframe?
+          @redirect_url = url_for(*args)
+          render :layout => false, :inline => <<-HTML
+            <html><head>
+              <script type="text/javascript">  
+                window.top.location.href = <%= @redirect_url.to_json -%>;
+              </script>
+              <noscript>
+                <meta http-equiv="refresh" content="0;url=<%=h @redirect_url %>" />
+                <meta http-equiv="window-target" content="_top" />
+              </noscript>                
+            </head></html>
+          HTML
+        else
+          redirect_to(*args)
+        end
+      end
+      
       def redirect_to(*args)
         if request_is_for_a_facebook_canvas? and !request_is_facebook_tab?
           render :text => fbml_redirect_tag(*args)
@@ -57,7 +88,6 @@ module Facebooker
       private
       
       def session_already_secured?
-          RAILS_DEFAULT_LOGGER.debug "VZ setting in session_already_secured?"
         (@facebook_session = session[:facebook_session]) && session[:facebook_session].secured? if valid_session_key_in_session?
       end
       
@@ -69,7 +99,6 @@ module Facebooker
       end
       
       def clear_facebook_session_information
-          RAILS_DEFAULT_LOGGER.debug "VZ setting in clear_facebook_session_information"
         session[:facebook_session] = nil
         @facebook_session=nil        
       end
@@ -97,7 +126,7 @@ module Facebooker
       end
 
       def fb_cookie_names
-        fb_cookie_names = cookies.keys.select{|k| k.starts_with?(fb_cookie_prefix)}
+        fb_cookie_names = cookies.keys.select{|k| k && k.starts_with?(fb_cookie_prefix)}
       end
 
       def secure_with_cookies!
@@ -118,11 +147,18 @@ module Facebooker
     
       def secure_with_token!
         if params['auth_token']
-          RAILS_DEFAULT_LOGGER.debug "VZ in secure_with_token, creating session"
           @facebook_session = new_facebook_session
           @facebook_session.auth_token = params['auth_token']
           @facebook_session.secure!
-          RAILS_DEFAULT_LOGGER.debug "VZ fb session after secure!: #{@facebook_session.inspect}"
+          @facebook_session
+        end
+      end
+    
+      def secure_with_session_secret!
+        if params['auth_token']
+          @facebook_session = new_facebook_session
+          @facebook_session.auth_token = params['auth_token']
+          @facebook_session.secure_with_session_secret!
           @facebook_session
         end
       end
@@ -141,12 +177,19 @@ module Facebooker
       def after_facebook_login_url
         nil
       end
+
+      def default_after_facebook_login_url
+        omit_keys = ["_method", "format"]
+        options = (params||{}).clone 
+        options = options.reject{|k,v| k.to_s.match(/^fb_sig/) or omit_keys.include?(k.to_s)} 
+        options = options.merge({:only_path => false})
+        url_for(options)
+      end
       
       def create_new_facebook_session_and_redirect!
-          RAILS_DEFAULT_LOGGER.debug "VZ setting in create_new_facebook_session_and_redirect!"
         session[:facebook_session] = new_facebook_session
-        url_params = after_facebook_login_url.nil? ? {} : {:next=>after_facebook_login_url}
-        redirect_to session[:facebook_session].login_url(url_params) unless @installation_required
+        next_url = after_facebook_login_url || default_after_facebook_login_url
+        top_redirect_to session[:facebook_session].login_url({:next => next_url, :canvas=>params[:fb_sig_in_canvas]}) unless @installation_required
         false
       end
       
@@ -161,10 +204,6 @@ module Facebooker
             User.new(friend_uid, facebook_session)
           end
         end
-      end
-            
-      def blank?(value)
-        (value == '0' || value.nil? || value == '')        
       end
 
       def verified_facebook_params
@@ -185,9 +224,12 @@ module Facebooker
       end
       
       def verify_signature(facebook_sig_params,expected_signature)
-        raw_string = facebook_sig_params.map{ |*args| args.join('=') }.sort.join
-        actual_sig = Digest::MD5.hexdigest([raw_string, Facebooker::Session.secret_key].join)
-        raise Facebooker::Session::IncorrectSignature if actual_sig != expected_signature
+        # Don't verify the signature if rack has already done so.
+        unless ::Rails.version >= "2.3" and ActionController::Dispatcher.middleware.include? Rack::Facebook
+          raw_string = facebook_sig_params.map{ |*args| args.join('=') }.sort.join
+          actual_sig = Digest::MD5.hexdigest([raw_string, Facebooker::Session.secret_key].join)
+          raise Facebooker::Session::IncorrectSignature if actual_sig != expected_signature
+        end
         raise Facebooker::Session::SignatureTooOld if facebook_sig_params['time'] && Time.at(facebook_sig_params['time'].to_f) < earliest_valid_session
         true
       end
@@ -196,11 +238,11 @@ module Facebooker
         @facebook_parameter_conversions ||= Hash.new do |hash, key| 
           lambda{|value| value}
         end.merge(
-          'time' => lambda{|value| Time.at(value.to_f)},
-          'in_canvas' => lambda{|value| !blank?(value)},
-          'added' => lambda{|value| !blank?(value)},
-          'expires' => lambda{|value| blank?(value) ? nil : Time.at(value.to_f)},
-          'friends' => lambda{|value| value.split(/,/)}
+          'time'      => lambda{|value| Time.at(value.to_f)},
+          'in_canvas' => lambda{|value| one_or_true(value)},
+          'added'     => lambda{|value| one_or_true(value)},
+          'expires'   => lambda{|value| zero_or_false(value) ? nil : Time.at(value.to_f)},
+          'friends'   => lambda{|value| value.split(/,/)}
         )
       end
       
@@ -224,14 +266,17 @@ module Facebooker
         !params["fb_sig_in_profile_tab"].blank?
       end
       
-      def request_is_facebook_ajax?
-        params["fb_sig_is_mockajax"]=="1" || params["fb_sig_is_ajax"]=="1" || params["fb_sig_is_ajax"]==true || params["fb_sig_is_mockajax"]==true
+      def request_is_facebook_iframe?
+        !params["fb_sig_in_iframe"].blank?
       end
+      
+      def request_is_facebook_ajax?
+        one_or_true(params["fb_sig_is_mockajax"]) || one_or_true(params["fb_sig_is_ajax"])
+      end
+
       def xml_http_request?
         request_is_facebook_ajax? || super
       end
-      
-      
       
       def application_is_installed?
         facebook_params['added']
@@ -249,9 +294,12 @@ module Facebooker
       def ensure_has_create_listing
         has_extended_permission?("create_listing") || application_needs_permission("create_listing")
       end
+      def ensure_has_create_event
+        has_extended_permission?("create_event") || application_needs_permission("create_event")
+      end
       
       def application_needs_permission(perm)
-        redirect_to(facebook_session.permission_url(perm))
+        top_redirect_to(facebook_session.permission_url(perm))
       end
       
       def has_extended_permission?(perm)
@@ -270,22 +318,18 @@ module Facebooker
       end
       
       def application_is_not_installed_by_facebook_user
-        url_params = after_facebook_login_url.nil? ? {} : { :next => after_facebook_login_url }
-        redirect_to session[:facebook_session].install_url(url_params)
+        next_url = after_facebook_login_url || default_after_facebook_login_url
+        top_redirect_to session[:facebook_session].install_url({:next => next_url})
       end
       
       def set_facebook_request_format
         if request_is_facebook_ajax?
           request.format = :fbjs
-        elsif request_comes_from_facebook?
+        elsif request_comes_from_facebook? && !request_is_facebook_iframe?
           request.format = :fbml
         end
       end
       
-      def set_adapter
-        Facebooker.load_adapter(params) if(params[:fb_sig_api_key])
-      end
-
       
       module ClassMethods
         #
