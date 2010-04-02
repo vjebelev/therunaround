@@ -56,6 +56,7 @@ module Facebooker
     class MissingOrInvalidImageFile < StandardError; end
     class TooManyUnapprovedPhotosPending < StandardError; end
     class ExtendedPermissionRequired < StandardError; end
+    class ReadMailboxExtendedPermissionRequired < StandardError; end
     class InvalidFriendList < StandardError; end
     class UserUnRegistrationFailed < StandardError
       attr_accessor :failed_users
@@ -120,6 +121,7 @@ module Facebooker
     # * create_event
     # * rsvp_event
     # * sms
+    # * read_mailbox
     def permission_url(permission,options={})
       options = default_login_url_options.merge(options)
       options = add_next_parameters(options)
@@ -155,6 +157,8 @@ module Facebooker
       optional_parameters << "&hide_checkbox=true" if options[:hide_checkbox]
       optional_parameters << "&canvas=true" if options[:canvas]
       optional_parameters << "&fbconnect=true" if options[:fbconnect]
+      optional_parameters << "&return_session=true" if options[:return_session]
+      optional_parameters << "&session_key_only=true" if options[:session_key_only]
       optional_parameters << "&req_perms=#{options[:req_perms]}" if options[:req_perms]
       optional_parameters.join
     end
@@ -206,7 +210,7 @@ module Facebooker
     def secure_with!(session_key, uid = nil, expires = nil, secret_from_session = nil)
       @session_key = session_key
       @uid = uid ? Integer(uid) : post('facebook.users.getLoggedInUser', :session_key => session_key)
-      @expires = Integer(expires)
+      @expires = expires ? Integer(expires) : 0
       @secret_from_session = secret_from_session
     end
 
@@ -239,9 +243,12 @@ module Facebooker
     def fql_query(query, format = 'XML')
       post('facebook.fql.query', :query => query, :format => format) do |response|
         type = response.shift
-        return [] if type.nil?
-        response.shift.map do |hash|
-          fql_build_object(type, hash)
+        if type.nil?
+          []
+        else
+          response.shift.map do |hash|
+            fql_build_object(type, hash)
+          end
         end
       end
     end
@@ -285,10 +292,33 @@ module Facebooker
       end
     end
 
-    # Creates an event with the event_info hash and an optional Net::HTTP::MultipartPostFile for the event picture
+    # Creates an event with the event_info hash and an optional Net::HTTP::MultipartPostFile for the event picture.
+    # If ActiveSupport::TimeWithZone is installed (it's in Rails > 2.1), and start_time or end_time are given as
+    # ActiveSupport::TimeWithZone, then they will be assumed to represent local time for the event. They will automatically be
+    # converted to the expected timezone for Facebook, which is PST or PDT depending on when the event occurs.
     # Returns the eid of the newly created event
     # http://wiki.developers.facebook.com/index.php/Events.create
     def create_event(event_info, multipart_post_file = nil)
+      if defined?(ActiveSupport::TimeWithZone) && defined?(ActiveSupport::TimeZone)
+        # Facebook expects all event local times to be in Pacific Time, so we need to take the actual local time and 
+        # send it to Facebook as if it were Pacific Time converted to Unix epoch timestamp. Very confusing...
+        facebook_time = ActiveSupport::TimeZone["Pacific Time (US & Canada)"]
+        
+        start_time = event_info.delete(:start_time) || event_info.delete('start_time')
+        if start_time && start_time.is_a?(ActiveSupport::TimeWithZone)
+          event_info['start_time'] = facebook_time.parse(start_time.strftime("%Y-%m-%d %H:%M:%S")).to_i
+        else
+          event_info['start_time'] = start_time
+        end
+        
+        end_time = event_info.delete(:end_time) || event_info.delete('end_time')
+        if end_time && end_time.is_a?(ActiveSupport::TimeWithZone)
+          event_info['end_time'] = facebook_time.parse(end_time.strftime("%Y-%m-%d %H:%M:%S")).to_i
+        else
+          event_info['end_time'] = end_time
+        end
+      end
+      
       post_file('facebook.events.create', :event_info => event_info.to_json, nil => multipart_post_file)
     end
     
@@ -394,11 +424,36 @@ module Facebooker
       end
     end
 
+    #remove a comment from a given xid stream with comment_id
+    def remove_comment(xid,comment_id)
+      post('facebook.comments.remove', :xid=>xid, :comment_id =>comment_id)
+    end
+  
+    #pulls comment list for a given XID
+    def get_comments(xid)
+      @comments = post('facebook.comments.get', :xid => xid) do |response|
+        response.map do |hash|
+          Comment.from_hash(hash)
+        end
+      end
+    end
+
     def get_albums(aids)
       @albums = post('facebook.photos.getAlbums', :aids => aids) do |response|
         response.map do |hash|        
           Album.from_hash(hash)
         end
+      end
+    end
+
+    ###
+    # Retrieve a viewer's facebook stream
+    # See http://wiki.developers.facebook.com/index.php/Stream.get for options
+    #
+    def get_stream(viewer_id, options = {})
+
+      @stream = post('facebook.stream.get', prepare_get_stream_options(viewer_id, options), true) do |response|
+        response
       end
     end
 
@@ -478,6 +533,21 @@ module Facebooker
       post("facebook.feed.publishUserAction", parameters)
     end
 
+    ##
+    # Upload strings in native locale to facebook for translations.
+    #
+    # e.g. facebook_session.upload_native_strings([:text => "Welcome {user}", :description => "Welcome message to currently logged in user."])
+    # returns the number of strings uploaded
+    #
+    # See http://wiki.developers.facebook.com/index.php/Intl.uploadNativeStrings for method options
+    #
+    def upload_native_strings(native_strings)
+      raise ArgumentError, "You must provide strings to upload" if native_strings.nil?
+
+      post('facebook.intl.uploadNativeStrings', :native_strings => Facebooker.json_encode(native_strings)) do |response|
+        response
+      end
+    end
 
     ##
     # Send email to as many as 100 users at a time
@@ -681,6 +751,7 @@ module Facebooker
       end
 
       def signature_for(params)
+        params.delete_if { |k,v| v.nil? }
         raw_string = params.inject([]) do |collection, pair|
           collection << pair.map { |x|
             Array === x ? Facebooker.json_encode(x) : x
@@ -692,6 +763,18 @@ module Facebooker
       
       def ensure_array(value)
         value.is_a?(Array) ? value : [value]
+      end
+
+      def prepare_get_stream_options(viewer_id, options)
+        opts = {}
+
+        opts[:viewer_id] = viewer_id if viewer_id.is_a?(Integer)
+        opts[:source_ids] = options[:source_ids] if options[:source_ids]
+        opts[:start_time] = options[:start_time].to_i if options[:start_time]
+        opts[:end_time] = options[:end_time].to_i if options[:end_time]
+        opts[:limit] = options[:limit] if options[:limit].is_a?(Integer)
+        opts[:metadata] = Facebooker.json_encode(options[:metadata]) if options[:metadata]
+        opts
       end
   end
 

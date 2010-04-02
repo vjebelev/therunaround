@@ -190,6 +190,29 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     assert_equal '34444349712', event_id
   end
   
+  def test_can_create_events_with_time_zones
+    mock_http = establish_session
+    mock_session = flexmock(@session)
+    
+    # Start time is Jan 1, 2012 at 12:30pm EST
+    # This should be sent to Facebook as 12:30pm PST, or 1325449800 in Epoch time
+    start_time = ActiveSupport::TimeZone["Eastern Time (US & Canada)"].parse("2012-01-01 12:30:00")
+    
+    # End time is July 4, 2012 at 3:00pm CDT
+    # Should be sent to Facebook as 3:00pm PDT, or 1341439200 in Epoch time
+    end_time = ActiveSupport::TimeZone["Central Time (US & Canada)"].parse("2012-07-04 15:00:00")
+    
+    expected_info = {
+      'name' => 'foo',
+      'category' => 'bar', 
+      'start_time' => 1325449800,
+      'end_time' => 1341439200
+    }.to_json
+    
+    mock_session.should_receive(:post_file).once.with('facebook.events.create', {:event_info => expected_info, nil => nil}).and_return(example_event_create_xml).once
+    mock_session.create_event('name' => 'foo', 'category' => 'bar', :start_time => start_time, :end_time => end_time)
+  end
+  
   def test_can_cancel_events
     expect_http_posts_with_responses(example_event_cancel_xml)
     assert @session.cancel_event("12345", :cancel_message => "It's raining")
@@ -362,6 +385,17 @@ class Facebooker::SessionTest < Test::Unit::TestCase
     assert_kind_of(Facebooker::Event::Attendance, @fql_response.first)
     assert_equal('attending', @fql_response.first.rsvp_status)
   end
+  
+  def test_parses_batch_response_with_escaped_chars
+    @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
+    expect_http_posts_with_responses(example_batch_run_with_escaped_chars_xml)
+    @session.batch do
+      @response = @session.events(:start_time => Time.now.to_i)
+    end
+    assert_kind_of(Facebooker::Event, @response.first)
+    assert_equal('Wolf & Crow', @response.first.name)
+  end
+  
   def test_parses_batch_response_sets_exception
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     expect_http_posts_with_responses(example_batch_run_xml)
@@ -590,7 +624,7 @@ XML
         <modified>1132553363</modified>
         <description>No I will not make out with you</description>
         <location>York, PA</location>
-        <link>http://www.facebook.com/album.php?aid=2002205&id=8055</link>
+        <link>http://www.facebook.com/album.php?aid=2002205&amp;id=8055</link>
         <size>30</size>
         <visible>friends</visible>
         <modified_major>1241834423</modified_major>
@@ -739,6 +773,29 @@ XML
     </batch_run_response>
     XML
   end
+  
+  def example_batch_run_with_escaped_chars_xml
+    <<-XML
+    <?xml version="1.0" encoding="UTF-8"?>
+    <batch_run_response xmlns="http://api.facebook.com/1.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://api.facebook.com/1.0/ http://api.facebook.com/1.0/facebook.xsd" list="true">
+      <batch_run_response_elt>
+        #{CGI.escapeHTML(event_with_amp_in_xml)}
+      </batch_run_response_elt>
+    </batch_run_response>
+    XML
+  end
+  def event_with_amp_in_xml
+    <<-XML
+    <?xml version="1.0" encoding="UTF-8"?>
+    <events_get_response xmlns=\"http://api.facebook.com/1.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://api.facebook.com/1.0/ http://api.facebook.com/1.0/facebook.xsd" list="true">
+      <event>
+        <eid>1</eid>
+        <name>Wolf &amp; Crow</name>
+      </event>
+    </events_get_response>
+    XML
+  end
+  
 
   def example_event_members_xml
     <<-XML

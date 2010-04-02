@@ -2,7 +2,7 @@ require File.expand_path(File.dirname(__FILE__) + '/../rails_test_helper')
 
 module FBConnectTestHelpers
   def setup_fb_connect_cookies(params=cookie_hash_for_auth)
-    params.each {|k,v| @request.cookies[ENV['FACEBOOK_API_KEY']+k] = CGI::Cookie.new(ENV['FACEBOOK_API_KEY']+k,v)}
+    params.each {|k,v| @request.cookies[ENV['FACEBOOK_API_KEY']+k] = CGI::Cookie.new(ENV['FACEBOOK_API_KEY']+k,v).first}
   end
 
   def expired_cookie_hash_for_auth
@@ -57,7 +57,7 @@ class ControllerWhichRequiresFacebookAuthentication < NoisyController
     render :text=>url_for(options)
   end
   
-   def named_route_test
+  def named_route_test
     render :text=>comments_url()
   end
   
@@ -495,6 +495,12 @@ class RailsIntegrationTest < Test::Unit::TestCase
     assert !@response.body.match(/root/)
   end
   
+  def test_url_for_links_to_canvas_if_fb_sig_is_ajax_is_true_and_fb_sig_in_canvas_is_not_true
+    # Normal fb ajax calls have no fb_sig_canvas_param but we must explicitly set it to 0 because it is set to 1 in default_facebook_parameters in test helpers
+    get :link_test, facebook_params(:fb_sig_is_ajax=>1, :fb_sig_in_canvas=>0)
+    assert_match(/apps.facebook.com/, @response.body)
+  end
+  
   def test_default_url_omits_fb_params
     get :index,facebook_params(:fb_sig_friends=>"overwriteme",:get_param=>"yes")
     assert_equal "http://apps.facebook.com/root/require_auth?get_param=yes", @controller.send(:default_after_facebook_login_url)
@@ -877,8 +883,7 @@ class RailsHelperTest < Test::Unit::TestCase
   
   def test_fb_dialog
     @h.expects(:capture).returns("dialog content")
-    @h.fb_dialog( "my_dialog", "1" ) do
-    end
+    @h.fb_dialog( "my_dialog", true ) {}
     assert_equal '<fb:dialog cancel_button="1" id="my_dialog">dialog content</fb:dialog>', @h.output_buffer
   end
   def test_fb_dialog_title
@@ -959,7 +964,7 @@ class RailsHelperTest < Test::Unit::TestCase
     assert_equal("<fb:request-form-submit />",@h.fb_request_form_submit)  
   end   
 
-	def test_fb_request_form_submit_with_uid
+  def test_fb_request_form_submit_with_uid
     assert_equal("<fb:request-form-submit uid=\"123456789\" />",@h.fb_request_form_submit({:uid => "123456789"}))
   end
 
@@ -1027,6 +1032,8 @@ class RailsHelperTest < Test::Unit::TestCase
   
   def test_fb_login_button
     assert_equal "<fb:login-button onlogin=\"somejs\"></fb:login-button>",@h.fb_login_button("somejs")
+
+    assert_equal "<fb:login-button onlogin=\"somejs\">Custom</fb:login-button>",@h.fb_login_button("somejs", :text => 'Custom')
   end
   
   def test_init_fb_connect_no_features
@@ -1071,9 +1078,13 @@ class RailsHelperTest < Test::Unit::TestCase
     assert ! @h.init_fb_connect(:js => :jquery).match(/\$\(document\).ready\(/)
   end
   
+  def test_init_fb_connect_with_options_js_mootools
+    assert @h.init_fb_connect("XFBML", :js => :mootools).match(/window.addEvent\('domready',/)
+  end
+  
   def test_init_fb_connect_with_features_and_options_js_jquery
     assert @h.init_fb_connect("XFBML", :js => :jquery).match(/XFBML.*/)
-    assert @h.init_fb_connect("XFBML", :js => :jquery).match(/\$\(document\).ready\(/)
+    assert @h.init_fb_connect("XFBML", :js => :jquery).match(/\jQuery\(document\).ready\(/)
   end
 
   def test_init_fb_connect_without_options_app_settings
@@ -1087,10 +1098,16 @@ class RailsHelperTest < Test::Unit::TestCase
   
   def test_fb_login_and_redirect
     assert_equal @h.fb_login_and_redirect("/path"),"<fb:login-button onlogin=\"window.location.href = &quot;/path&quot;;\"></fb:login-button>"
+    
+    assert_equal @h.fb_login_and_redirect("/path", :text => 'foo'),"<fb:login-button onlogin=\"window.location.href = &quot;/path&quot;;\">foo</fb:login-button>"
   end
   
   def test_fb_logout_link
     assert_equal @h.fb_logout_link("Logout","My URL"),"<a href=\"#\" onclick=\"FB.Connect.logoutAndRedirect(&quot;My URL&quot;);; return false;\">Logout</a>"
+  end
+
+  def test_fb_bookmark_link
+    assert_equal @h.fb_bookmark_link("Bookmark","My URL"),"<a href=\"#\" onclick=\"FB.Connect.showBookmarkDialog(&quot;My URL&quot;);; return false;\">Bookmark</a>"
   end
 
   def test_fb_user_action_with_literal_callback
@@ -1104,7 +1121,27 @@ class RailsHelperTest < Test::Unit::TestCase
     assert_equal "FB.Connect.showFeedDialog(null, null, null, null, null, FB.RequireConnect.promptConnect, null, \"prompt\", #{{"value" => "message"}.to_json});",
                  @h.fb_user_action(action,"message","prompt")
   end
-
+  
+  def test_fb_connect_stream_publish
+    stream_post = Facebooker::StreamPost.new
+    attachment = Facebooker::Attachment.new
+    attachment.name="name"
+    stream_post.message = "message"
+    stream_post.target="12451752"
+    stream_post.attachment = attachment
+    
+    assert @h.fb_connect_stream_publish(stream_post).match(/FB.Connect\.streamPublish\(\"message\", \{\"name\":\s?\"name\"\}, \[\], \"12451752\", null, null, false, null\);/)
+  end
+  def test_fb_stream_publish
+    stream_post = Facebooker::StreamPost.new
+    attachment = Facebooker::Attachment.new
+    attachment.name="name"
+    stream_post.message = "message"
+    stream_post.target="12451752"
+    stream_post.attachment = attachment
+    
+    assert @h.fb_stream_publish(stream_post).match(/Facebook\.streamPublish\(\"message\", \{\"name\":\s?\"name\"\}, \[\], \"12451752\", null, null, false, null\);/)
+  end
 
   def test_fb_connect_javascript_tag
     silence_warnings do
@@ -1130,7 +1167,7 @@ class RailsHelperTest < Test::Unit::TestCase
     end
 
     silence_warnings do
-      assert_equal "<script src=\"https://www.connect.facebook.com/js/api_lib/v0.4/FeatureLoader.js.php\" type=\"text/javascript\"></script>",
+      assert_equal "<script src=\"https://ssl.connect.facebook.com/js/api_lib/v0.4/FeatureLoader.js.php\" type=\"text/javascript\"></script>",
         @h.fb_connect_javascript_tag
     end
   end
@@ -1145,7 +1182,7 @@ class RailsHelperTest < Test::Unit::TestCase
     end
 
     silence_warnings do
-      assert_equal "<script src=\"https://www.connect.facebook.com/js/api_lib/v0.4/FeatureLoader.js.php/en_US\" type=\"text/javascript\"></script>",
+      assert_equal "<script src=\"https://ssl.connect.facebook.com/js/api_lib/v0.4/FeatureLoader.js.php/en_US\" type=\"text/javascript\"></script>",
         @h.fb_connect_javascript_tag(:lang => "en_US")
     end
   end
@@ -1367,8 +1404,8 @@ class RailsUrlHelperExtensionsTest < Test::Unit::TestCase
     @prompt = "Are you sure?"
     @default_title = "Please Confirm"
     @title = "Confirm Request"
-    @style = {:color => 'black', :background => 'white'}
-    @verbose_style = "{background: 'white', color: 'black'}"
+    @style = {:color => 'black'}
+    @verbose_style = "{color: 'black'}"
     @default_okay = "Okay"
     @default_cancel = "Cancel"
     @default_style = "" #"'width','200px'"
@@ -1503,3 +1540,4 @@ class RailsRequestFormatTest < Test::Unit::TestCase
   end
   
 end
+

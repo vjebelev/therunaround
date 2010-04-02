@@ -1,3 +1,10 @@
+ function permission_granted() {  
+  $('fb_publish').childElements().each(function(item){   
+    item.remove();
+  });
+  new Ajax.Request('/welcome/fbpublish', {method: 'get'})
+}
+
 function populate_date(month, day, year) {
   ge('date_month').value = month;
   ge('date_day').value = day;

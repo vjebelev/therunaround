@@ -8,7 +8,6 @@
 <div class="clearfix">
   <div class="bluebox">
     <h3>Where did you run recently?</h3>
-
     <% form_tag do %>
       <table class="add_run_table">
         <tr>
@@ -39,13 +38,19 @@
            <%= link_to_function('Yesterday', "populate_date('#{Time.now.yesterday.mon}', '#{Time.now.yesterday.day}', '#{Time.now.yesterday.year}')") %>
           </td>
         </tr>
-      </table>
-
-      <p id="publish_fb_checkbox" style="<%= facebook_user ? '' : 'display:none' %>">
-        <%= image_tag('http://static.ak.fbcdn.net/images/icons/favicon.gif') %>
-        <%= check_box_tag(:publish_to_facebook, 0, true) %>
-        Publish this run to Facebook
-      </p>
+      </table>      
+      <% if facebook_user %>
+        <div id="fb_publish">
+          <% unless facebook_user.has_permission?("publish_stream") %>
+            <p id="fb_no_permission">
+              The Run Around doesn't have a permission to publish to your Facebook stream.        
+              <fb:prompt-permission perms="publish_stream" next_fbjs="permission_granted()">Click here to allow</fb:prompt-permission>.
+            </p>
+          <% else %>
+            <%= render :partial => 'shared/fbpublish' %>        
+          <% end %>
+        </div>
+      <% end %>  
       <%= submit_tag('Add Run', :class => 'inputsubmit') %>
     <%- end -%>
   </div>

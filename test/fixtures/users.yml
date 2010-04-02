@@ -1,6 +1,7 @@
 first:
   id: 1
-  username: ideeli_anywhere
-  password: ideeli_anywhere
+  username: user
+  password: password
+  name: Zolou Group
   email_hash: 69185910_8c04fdafc1017ba0a241c498ce62fe52
   email: test_email@forthissite.com

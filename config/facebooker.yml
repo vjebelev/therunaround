@@ -7,10 +7,10 @@
 # This should only be necessary until the final version of the new profile is released.
 
 development:
-  api_key: ba6343dd6c93d93c9b4823ef8697faf5
-  secret_key: a5bd4ba662ba58a49147382a87e11aa2
-  canvas_page_name: trr
-  callback_url: 
+  api_key: 2044b311207e1dabc435e8c9f579046f
+  secret_key: 957314083e6b651782a93e126f24d968
+  canvas_page_name: therunaround
+  callback_url: #INSERT YOUR CALLBACK_URL HERE
   pretty_errors: true
   set_asset_host_to_callback_url: false
 

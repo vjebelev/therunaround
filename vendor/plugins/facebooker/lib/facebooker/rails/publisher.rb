@@ -108,7 +108,9 @@ module Facebooker
         @from                 = nil
         @full_story_template  = nil
         @recipients           = nil
+        @action_links         = nil
         @controller           = PublisherController.new(self)
+        @action_links         = nil
       end
 
       def self.default_url_options
@@ -306,7 +308,7 @@ module Facebooker
         when :user_action
           UserAction.new
         when :publish_stream
-          PublishStream.new
+          StreamPost.new
         else
           raise UnknownBodyType.new("Unknown type to publish")
         end
@@ -331,10 +333,13 @@ module Facebooker
       end
 
       def action_links(*links)
+        if self._body and self._body.respond_to?(:action_links)
+          self._body.send(:action_links,*links)
+        end
         if links.blank?
           @action_links
         else
-          @action_links = links
+          @action_links = *links
         end
       end
       
@@ -418,7 +423,7 @@ module Facebooker
           Facebooker::Session.create.server_cache.set_ref_handle(_body.handle,_body.fbml)
         when UserAction
           @from.session.publish_user_action(_body.template_id,_body.data_hash,_body.target_ids,_body.body_general,_body.story_size)
-        when PublishStream
+        when Facebooker::StreamPost
          @from.publish_to(_body.target, {:attachment => _body.attachment, :action_links => @action_links, :message => _body.message })
         else
           raise UnspecifiedBodyType.new("You must specify a valid send_as")
@@ -442,18 +447,18 @@ module Facebooker
 
       def initialize_template_class(assigns)
         template_root = "#{RAILS_ROOT}/app/views"
-	      controller_root = File.join(template_root,self.class.controller_path)
+        controller_root = File.join(template_root,self.class.controller_path)
         #only do this on Rails 2.1
-	      if ActionController::Base.respond_to?(:append_view_path)
-  	      # only add the view path once
-  	      unless ActionController::Base.view_paths.include?(controller_root)
-	          ActionController::Base.append_view_path(controller_root) 
-	          ActionController::Base.append_view_path(controller_root+"/..") 
-	        end
+        if ActionController::Base.respond_to?(:append_view_path)
+          # only add the view path once
+          unless ActionController::Base.view_paths.include?(controller_root)
+            ActionController::Base.append_view_path(controller_root) 
+            ActionController::Base.append_view_path(controller_root+"/..") 
+          end
           view_paths = ActionController::Base.view_paths
         else
           view_paths = [template_root, controller_root]
-	      end
+        end
         returning ActionView::Base.new(view_paths, assigns, self) do |template|
           template.controller=self
           template.extend(self.class.master_helper_module)
@@ -514,6 +519,14 @@ module Facebooker
           all_template_ids = session.active_template_bundles.map {|t| t["template_bundle_id"]}
           (all_template_ids - active_template_ids).each do |template_bundle_id|
             session.deactivate_template_bundle_by_id(template_bundle_id)
+          end
+        end
+        
+        def respond_to?(method_symbol, include_private=false)
+          if match = /^(create|deliver|register)_([_a-z]\w*)/.match(method_symbol.to_s)
+            instance_methods.include?(match[2])
+          else
+            super(method_symbol, include_private)
           end
         end
         
